@@ -2,21 +2,36 @@ from flask import Flask, request, jsonify
 import pandas as pd
 import joblib
 import cx_Oracle
-import csv
 import os
 from typing import Dict, List, Any
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 app = Flask(__name__)
 
-# Database connection details
-DB_CONFIG = {
-    "ip": "172.27.201.11",
-    "port": "1521",
-    "sid": "stdsvfe",
-    "username": "yenat",
-    "password": "yenat_123"
-}
+class DatabaseConfig:
+    def __init__(self):
+        self.ip = os.getenv('DB_IP')
+        self.port = os.getenv('DB_PORT')
+        self.sid = os.getenv('DB_SID')
+        self.username = os.getenv('DB_USERNAME')  # No defaults!
+        self.password = os.getenv('DB_PASSWORD')  # No defaults!
+        
+        if not all([self.ip, self.port, self.sid, self.username, self.password]):
+            raise ValueError("All database credentials must be set in environment variables")
+
+    def get_dsn(self):
+        return cx_Oracle.makedsn(self.ip, self.port, self.sid)
+
+# Initialize database configuration
+try:
+    db_config = DatabaseConfig()
+except ValueError as e:
+    print(f"Database configuration error: {e}")
+    db_config = None
 
 # Load the trained model
 try:
@@ -27,10 +42,13 @@ except FileNotFoundError:
 
 def get_db_connection():
     """Establish connection to Oracle database"""
-    dsn = cx_Oracle.makedsn(DB_CONFIG["ip"], DB_CONFIG["port"], DB_CONFIG["sid"])
+    if not db_config:
+        raise ValueError("Database not configured")
+    
+    dsn = db_config.get_dsn()
     return cx_Oracle.connect(
-        user=DB_CONFIG["username"],
-        password=DB_CONFIG["password"],
+        user=db_config.username,
+        password=db_config.password,
         dsn=dsn
     )
 
@@ -39,6 +57,9 @@ def extract_features_for_hpan(hpan: str) -> Dict[str, Any]:
     Extract features for a given HPAN from the database
     Returns dictionary of features or None if HPAN not found
     """
+    if not db_config:
+        raise ValueError("Database not configured")
+    
     connection = get_db_connection()
     cursor = connection.cursor()
     
@@ -103,60 +124,82 @@ def predict() -> Dict[str, Any]:
         if not fayda_number:
             return jsonify({'error': 'fayda_number is required'}), 400
 
-        results = []
+        # Initialize combined metrics
+        combined_features = {
+            'total_tx': 0,
+            'total_amt': 0.0,
+            'unq_acquinstid': set(),
+            'avg_days_bn_tx': []
+        }
+        credit_scores = []
+
+        # Process each card
         for card_data in request_data.get('data', []):
+            if not isinstance(card_data, dict):
+                continue
+
             card_number = card_data.get('card_number')
             if not card_number:
                 continue
 
-            hpan = card_number  # Assuming card_number is HPAN for testing
-            features = extract_features_for_hpan(hpan)
-            if not features:
-                results.append({
-                    'bic': card_data.get('bic'),
-                    'account_number': card_data.get('account_number'),
-                    'card_number': card_number,
-                    'error': 'No transactions found'
-                })
+            try:
+                hpan = str(card_number)
+                features = extract_features_for_hpan(hpan)
+                
+                if not features:
+                    continue  # Skip cards with no transactions
+
+                # Aggregate features
+                combined_features['total_tx'] += features['total_tx']
+                combined_features['total_amt'] += features['total_amt']
+                combined_features['unq_acquinstid'].add(features['unq_acquinstid'])
+                combined_features['avg_days_bn_tx'].append(features['avg_days_bn_tx'])
+
+                # Calculate individual score
+                if model:
+                    input_data = pd.DataFrame([[
+                        features['total_tx'],
+                        features['total_amt'],
+                        features['unq_acquinstid'],
+                        features['avg_days_bn_tx']
+                    ]], columns=['total_tx', 'total_amt', 'unq_acquinstid', 'avg_days_bn_tx'])
+                    
+                    credit_score = int(float(model.predict(input_data)[0]))
+                    credit_scores.append(credit_score)
+
+            except Exception as e:
+                print(f"Error processing card {card_number}: {str(e)}")
                 continue
 
-            # Convert NumPy/pandas types to native Python
-            features = {
-                'total_tx': int(features['total_tx']),
-                'total_amt': float(features['total_amt']),
-                'unq_acquinstid': int(features['unq_acquinstid']),
-                'avg_days_bn_tx': float(features['avg_days_bn_tx'])
+        # Calculate final combined score
+        if credit_scores:
+            combined_score = int(sum(credit_scores)/len(credit_scores))
+            combined_risk = get_risk_level(combined_score)
+            
+            final_features = {
+                'total_tx': combined_features['total_tx'],
+                'total_amt': float(combined_features['total_amt']),
+                'unq_acquinstid': len(combined_features['unq_acquinstid']),
+                'avg_days_bn_tx': float(sum(combined_features['avg_days_bn_tx'])/len(combined_features['avg_days_bn_tx'])) if combined_features['avg_days_bn_tx'] else 0.0
+            }
+        else:
+            combined_score = 0
+            combined_risk = "UNKNOWN"
+            final_features = {
+                'total_tx': 0,
+                'total_amt': 0.0,
+                'unq_acquinstid': 0,
+                'avg_days_bn_tx': 0.0
             }
 
-            # Create input_data DataFrame for the model
-            input_data = pd.DataFrame([[
-                features['total_tx'],
-                features['total_amt'],
-                features['unq_acquinstid'],
-                features['avg_days_bn_tx']
-            ]], columns=['total_tx', 'total_amt', 'unq_acquinstid', 'avg_days_bn_tx'])
-
-            if model:
-                credit_score = float(model.predict(input_data)[0])  # Now input_data is defined
-                risk_level = get_risk_level(credit_score)
-            else:
-                credit_score = 0.0
-                risk_level = "UNKNOWN"
-
-            results.append({
-                'bic': card_data.get('bic'),
-                'account_number': card_data.get('account_number'),
-                'card_number': card_number,
-                'credit_score': credit_score,
-                'risk_level': risk_level,
-                'features': features
-            })
-
+        # Return only the combined result
         return jsonify({
             'fayda_number': fayda_number,
             'type': 'CREDIT_SCORE',
-            'results': results,
-            'callbackUrl': request_data.get('callbackUrl', '')
+            'score': combined_score,
+            'risk_level': combined_risk,
+            'features': final_features,
+            'timestamp': datetime.now().isoformat()
         })
 
     except Exception as e:
