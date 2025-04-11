@@ -4,9 +4,9 @@ FROM python:3.9-slim
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies (including unzip)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends gcc python3-dev libaio1 && \
+    apt-get install -y --no-install-recommends gcc python3-dev libaio1 unzip && \
     rm -rf /var/lib/apt/lists/*
 
 # Install Oracle Instant Client
@@ -27,16 +27,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application files
 COPY . .
 
-# Create .env file from environment variables at runtime
-RUN touch .env
-CMD ["sh", "-c", "echo DB_IP=$DB_IP > .env && \
-                   echo DB_PORT=$DB_PORT >> .env && \
-                   echo DB_SID=$DB_SID >> .env && \
-                   echo DB_USERNAME=$DB_USERNAME >> .env && \
-                   echo DB_PASSWORD=$DB_PASSWORD >> .env && \
-                   python app.py"]
-
-
 # Use build arguments
 ARG DB_IP
 ARG DB_PORT
@@ -45,12 +35,12 @@ ARG DB_USERNAME
 ARG DB_PASSWORD
 
 # Create .env file from build arguments
-RUN echo DB_IP=$DB_IP > .env && \
-    echo DB_PORT=$DB_PORT >> .env && \
-    echo DB_SID=$DB_SID >> .env && \
-    echo DB_USERNAME=$DB_USERNAME >> .env && \
-    echo DB_PASSWORD=$DB_PASSWORD >> .env
-
-CMD ["python", "app.py"]
+RUN echo DB_IP=${DB_IP} > .env && \
+    echo DB_PORT=${DB_PORT} >> .env && \
+    echo DB_SID=${DB_SID} >> .env && \
+    echo DB_USERNAME=${DB_USERNAME} >> .env && \
+    echo DB_PASSWORD=${DB_PASSWORD} >> .env
 
 EXPOSE 5000
+
+CMD ["python", "app.py"]
