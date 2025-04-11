@@ -2,89 +2,64 @@ pipeline {
     agent any
     
     environment {
-        // Docker image settings
         DOCKER_IMAGE = 'credit-score-api'
         DOCKER_TAG = 'latest'
-        CONTAINER_PORT = '5000'  // Matches your Flask app's port
-        
-        // Database credentials (from Jenkins credentials store)
-        DB_IP = credentials('DB_IP')
-        DB_PORT = credentials('DB_PORT')
-        DB_SID = credentials('DB_SID')
-        DB_USERNAME = credentials('DB_USERNAME')
-        DB_PASSWORD = credentials('DB_PASSWORD')
     }
     
     stages {
-        stage('Checkout Code') {
+        stage('Checkout') {
             steps {
-                git branch: 'main', 
-                url: 'https://github.com/yenat/Interoperable-creditscore.git'
+                git url: 'https://github.com/yenat/Interoperable-creditscore.git', 
+                     branch: 'main'
             }
         }
         
-        stage('Build Docker Image') {
+        stage('Build') {
             steps {
                 script {
-                    // Build with database credentials as build args
-                    docker.build("${DOCKER_IMAGE}:${DOCKER_TAG}", 
-                        "--build-arg DB_IP=${DB_IP} " +
-                        "--build-arg DB_PORT=${DB_PORT} " +
-                        "--build-arg DB_SID=${DB_SID} " +
-                        "--build-arg DB_USERNAME=${DB_USERNAME} " +
-                        "--build-arg DB_PASSWORD=${DB_PASSWORD} ."
-                    )
-                }
-            }
-        }
-        
-        stage('Deploy API') {
-            steps {
-                script {
-                    // Stop and remove old container if exists
-                    sh "docker stop ${DOCKER_IMAGE} || true"
-                    sh "docker rm ${DOCKER_IMAGE} || true"
-                    
-                    // Deploy new container with environment variables
-                    sh """
-                        docker run -d \
-                            --name ${DOCKER_IMAGE} \
-                            -p ${CONTAINER_PORT}:5000 \
-                            -e DB_IP=${DB_IP} \
-                            -e DB_PORT=${DB_PORT} \
-                            -e DB_SID=${DB_SID} \
-                            -e DB_USERNAME=${DB_USERNAME} \
-                            -e DB_PASSWORD=${DB_PASSWORD} \
-                            --restart unless-stopped \
-                            ${DOCKER_IMAGE}:${DOCKER_TAG}
-                    """
-                    
-                    // Verify container is running
-                    sleep(time: 5, unit: 'SECONDS')
-                    def containerStatus = sh(
-                        returnStdout: true,
-                        script: "docker inspect -f '{{.State.Running}}' ${DOCKER_IMAGE} || echo 'false'"
-                    ).trim()
-                    
-                    if (containerStatus != "true") {
-                        error("Container failed to start! Check logs with: docker logs ${DOCKER_IMAGE}")
+                    // Create temporary .env file
+                    withCredentials([
+                        string(credentialsId: 'DB_IP', variable: 'DB_IP'),
+                        string(credentialsId: 'DB_PORT', variable: 'DB_PORT'),
+                        string(credentialsId: 'DB_SID', variable: 'DB_SID'),
+                        string(credentialsId: 'DB_USERNAME', variable: 'DB_USERNAME'),
+                        string(credentialsId: 'DB_PASSWORD', variable: 'DB_PASSWORD')
+                    ]) {
+                        sh """
+                            echo "DB_IP=${DB_IP}" > .env
+                            echo "DB_PORT=${DB_PORT}" >> .env
+                            echo "DB_SID=${DB_SID}" >> .env
+                            echo "DB_USERNAME=${DB_USERNAME}" >> .env
+                            echo "DB_PASSWORD=${DB_PASSWORD}" >> .env
+                        """
+                        
+                        docker.build("${DOCKER_IMAGE}:${DOCKER_TAG}")
                     }
                 }
             }
         }
-    }
-    
-    post {
-        always {
-            script {
-                // Debugging info
-                echo "### Deployment Summary ###"
-                sh """
-                    echo "Running containers:"
-                    docker ps --filter "name=${DOCKER_IMAGE}"
-                    echo "\nRecent logs:"
-                    docker logs ${DOCKER_IMAGE} --tail 30 || true
-                """
+        
+        stage('Deploy') {
+            steps {
+                script {
+                    withCredentials([
+                        string(credentialsId: 'DB_IP', variable: 'DB_IP'),
+                        // Repeat for other credentials...
+                    ]) {
+                        sh """
+                            docker run -d \
+                                --name ${DOCKER_IMAGE} \
+                                -p 5000:5000 \
+                                -e DB_IP=${DB_IP} \
+                                -e DB_PORT=${DB_PORT} \
+                                -e DB_SID=${DB_SID} \
+                                -e DB_USERNAME=${DB_USERNAME} \
+                                -e DB_PASSWORD=${DB_PASSWORD} \
+                                --restart unless-stopped \
+                                ${DOCKER_IMAGE}:${DOCKER_TAG}
+                        """
+                    }
+                }
             }
         }
     }
