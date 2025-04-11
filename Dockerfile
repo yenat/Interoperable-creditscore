@@ -36,4 +36,21 @@ CMD ["sh", "-c", "echo DB_IP=$DB_IP > .env && \
                    echo DB_PASSWORD=$DB_PASSWORD >> .env && \
                    python app.py"]
 
+
+# Use build arguments
+ARG DB_IP
+ARG DB_PORT
+ARG DB_SID
+ARG DB_USERNAME
+ARG DB_PASSWORD
+
+# Create .env file from build arguments
+RUN echo DB_IP=$DB_IP > .env && \
+    echo DB_PORT=$DB_PORT >> .env && \
+    echo DB_SID=$DB_SID >> .env && \
+    echo DB_USERNAME=$DB_USERNAME >> .env && \
+    echo DB_PASSWORD=$DB_PASSWORD >> .env
+
+CMD ["python", "app.py"]
+
 EXPOSE 5000

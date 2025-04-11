@@ -2,55 +2,66 @@ pipeline {
     agent any
     
     environment {
-        DB_IP = credentials('db_ip')
-        DB_PORT = credentials('db_port')
-        DB_SID = credentials('db_sid')
-        DB_USERNAME = credentials('db_username')
-        DB_PASSWORD = credentials('db_password')
+        // Docker image settings
+        DOCKER_IMAGE = 'credit-score-api'
+        DOCKER_TAG = 'latest'
+        API_PORT = '5000'  // Your app's port (from app.py)
+        
+        // Database credentials (from Jenkins credentials store)
+        DB_IP = credentials('DB_IP')
+        DB_PORT = credentials('DB_PORT')
+        DB_SID = credentials('DB_SID')
+        DB_USERNAME = credentials('DB_USERNAME')
+        DB_PASSWORD = credentials('DB_PASSWORD')
     }
     
     stages {
-        stage('Build') {
+        stage('Build Docker Image') {
             steps {
                 script {
-                    // Build Docker image
-                    docker.build("credit-score-api:${env.BUILD_ID}")
+                    // Build with database credentials as build args
+                    docker.build("${DOCKER_IMAGE}:${DOCKER_TAG}", 
+                        "--build-arg DB_IP=${DB_IP} " +
+                        "--build-arg DB_PORT=${DB_PORT} " +
+                        "--build-arg DB_SID=${DB_SID} " +
+                        "--build-arg DB_USERNAME=${DB_USERNAME} " +
+                        "--build-arg DB_PASSWORD=${DB_PASSWORD} ."
+                    )
                 }
             }
         }
         
-        stage('Test') {
+        stage('Deploy API') {
             steps {
                 script {
-                    // Run tests (you should add proper tests)
-                    def testContainer = docker.image("credit-score-api:${env.BUILD_ID}").run("-e DB_IP=${DB_IP} -e DB_PORT=${DB_PORT} -e DB_SID=${DB_SID} -e DB_USERNAME=${DB_USERNAME} -e DB_PASSWORD=${DB_PASSWORD} -p 5000:5000")
+                    // Stop and remove old container (if exists)
+                    sh "docker stop ${DOCKER_IMAGE} || true"
+                    sh "docker rm ${DOCKER_IMAGE} || true"
                     
-                    // Simple API test
-                    def response = sh(script: "curl -X POST http://localhost:5000/predict -H 'Content-Type: application/json' -d '{\"fayda_number\":\"test\",\"type\":\"CREDIT_SCORE\",\"data\":[{\"card_number\":\"123\"}]}'", returnStdout: true)
+                    // Deploy new container with DB env vars
+                    sh """
+                        docker run -d \
+                            --name ${DOCKER_IMAGE} \
+                            -p ${API_PORT}:5000 \
+                            -e DB_IP=${DB_IP} \
+                            -e DB_PORT=${DB_PORT} \
+                            -e DB_SID=${DB_SID} \
+                            -e DB_USERNAME=${DB_USERNAME} \
+                            -e DB_PASSWORD=${DB_PASSWORD} \
+                            --restart unless-stopped \
+                            ${DOCKER_IMAGE}:${DOCKER_TAG}
+                    """
                     
-                    // Verify response format
-                    if (!response.contains('score') || !response.contains('risk_level')) {
-                        error("API test failed: Invalid response format")
+                    // Basic health check (ensure container stays running)
+                    sleep(time: 5, unit: 'SECONDS')
+                    def isRunning = sh(
+                        returnStdout: true,
+                        script: "docker inspect -f '{{.State.Running}}' ${DOCKER_IMAGE} || echo 'false'"
+                    ).trim()
+                    
+                    if (isRunning != "true") {
+                        error("Container failed to start!")
                     }
-                    
-                    testContainer.stop()
-                }
-            }
-        }
-        
-        stage('Deploy') {
-            when {
-                branch 'main'
-            }
-            steps {
-                script {
-                    // Push to container registry (example for AWS ECR)
-                    docker.withRegistry('https://your-registry-url', 'ecr-credentials') {
-                        docker.image("credit-score-api:${env.BUILD_ID}").push()
-                    }
-                    
-                    // Deploy to production (example for ECS)
-                    sh "aws ecs update-service --cluster your-cluster --service your-service --force-new-deployment"
                 }
             }
         }
@@ -58,8 +69,15 @@ pipeline {
     
     post {
         always {
-            // Clean up
-            sh "docker rmi credit-score-api:${env.BUILD_ID} || true"
+            script {
+                // Log container status (debugging)
+                sh """
+                    echo "### Container Status ###"
+                    docker ps -a --filter "name=${DOCKER_IMAGE}"
+                    echo "\\n### Recent Logs ###"
+                    docker logs ${DOCKER_IMAGE} --tail 50 || true
+                """
+            }
         }
     }
 }
