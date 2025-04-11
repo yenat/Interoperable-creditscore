@@ -193,14 +193,17 @@ def predict() -> Dict[str, Any]:
             }
 
         # Return only the combined result
-        return jsonify({
-            'fayda_number': fayda_number,
-            'type': 'CREDIT_SCORE',
-            'score': combined_score,
-            'risk_level': combined_risk,
-            'features': final_features,
-            'timestamp': datetime.now().isoformat()
-        })
+        from collections import OrderedDict
+
+        # In your predict() function, replace the return statement with:
+        return jsonify(OrderedDict([
+            ('fayda_number', fayda_number),
+            ('type', 'CREDIT_SCORE'),
+            ('score', combined_score),
+            ('risk_level', combined_risk),
+            ('features', final_features),
+            ('timestamp', datetime.now().isoformat())
+        ]))
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500

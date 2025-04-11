@@ -2,68 +2,68 @@ pipeline {
     agent any
     
     environment {
+        // Docker image settings
         DOCKER_IMAGE = 'credit-score-api'
         DOCKER_TAG = 'latest'
-        CONTAINER_PORT = '5000'
+        API_PORT = '5000'  // Your app's port (from app.py)
+        
+        // Database credentials (from Jenkins credentials store)
+        DB_IP = credentials('DB_IP')
+        DB_PORT = credentials('DB_PORT')
+        DB_SID = credentials('DB_SID')
+        DB_USERNAME = credentials('DB_USERNAME')
+        DB_PASSWORD = credentials('DB_PASSWORD')
     }
     
     stages {
-        stage('Checkout') {
-            steps {
-                git branch: 'main', 
-                url: 'https://github.com/yenat/Interoperable-creditscore.git'
-            }
-        }
-        
-        stage('Build') {
+        stage('Build Docker Image') {
             steps {
                 script {
-                    withCredentials([
-                        string(credentialsId: 'DB_IP', variable: 'DB_IP'),
-                        string(credentialsId: 'DB_PORT', variable: 'DB_PORT'), 
-                        string(credentialsId: 'DB_SID', variable: 'DB_SID'),
-                        string(credentialsId: 'DB_USERNAME', variable: 'DB_USERNAME'),
-                        string(credentialsId: 'DB_PASSWORD', variable: 'DB_PASSWORD')
-                    ]) {
-                        sh """
-                            docker build \
-                                --build-arg DB_IP=${DB_IP} \
-                                --build-arg DB_PORT=${DB_PORT} \
-                                --build-arg DB_SID=${DB_SID} \
-                                --build-arg DB_USERNAME=${DB_USERNAME} \
-                                --build-arg DB_PASSWORD=${DB_PASSWORD} \
-                                -t ${DOCKER_IMAGE}:${DOCKER_TAG} .
-                        """
-                    }
+                    // Build with database credentials as build args
+                    docker.build("${DOCKER_IMAGE}:${DOCKER_TAG}", 
+                        "--build-arg DB_IP=${DB_IP} " +
+                        "--build-arg DB_PORT=${DB_PORT} " +
+                        "--build-arg DB_SID=${DB_SID} " +
+                        "--build-arg DB_USERNAME=${DB_USERNAME} " +
+                        "--build-arg DB_PASSWORD=${DB_PASSWORD} ."
+                    )
                 }
             }
         }
         
-        stage('Deploy') {
+        stage('Deploy API') {
             steps {
                 script {
-                    withCredentials([
-                        string(credentialsId: 'DB_IP', variable: 'DB_IP'),
-                        string(credentialsId: 'DB_PORT', variable: 'DB_PORT'),
-                        string(credentialsId: 'DB_SID', variable: 'DB_SID'),
-                        string(credentialsId: 'DB_USERNAME', variable: 'DB_USERNAME'),
-                        string(credentialsId: 'DB_PASSWORD', variable: 'DB_PASSWORD')
-                    ]) {
-                        sh """
-                            docker stop ${DOCKER_IMAGE} || true
-                            docker rm ${DOCKER_IMAGE} || true
-                            
-                            docker run -d \
-                                --name ${DOCKER_IMAGE} \
-                                -p ${CONTAINER_PORT}:5000 \
-                                -e DB_IP=${DB_IP} \
-                                -e DB_PORT=${DB_PORT} \
-                                -e DB_SID=${DB_SID} \
-                                -e DB_USERNAME=${DB_USERNAME} \
-                                -e DB_PASSWORD=${DB_PASSWORD} \
-                                --restart unless-stopped \
-                                ${DOCKER_IMAGE}:${DOCKER_TAG}
-                        """
+                    // Stop and remove old container (if exists)
+                    sh "docker stop ${DOCKER_IMAGE} || true"
+                    sh "docker rm ${DOCKER_IMAGE} || true"
+                    
+                    // Deploy new container with DB env vars
+                    sh """
+                        docker stop interoperable-credit-score-api || true
+                        docker rm interoperable-credit-score-api || true
+                        
+                        docker run -d \
+                            --name interoperable-credit-score-api \
+                            -p 5000:5000 \
+                            -e DB_IP=${DB_IP} \
+                            -e DB_PORT=${DB_PORT} \
+                            -e DB_SID=${DB_SID} \
+                            -e DB_USERNAME=${DB_USERNAME} \
+                            -e DB_PASSWORD=${DB_PASSWORD} \
+                            --restart unless-stopped \
+                            credit-score-api:latest
+                    """
+                    
+                    // Basic health check (ensure container stays running)
+                    sleep(time: 5, unit: 'SECONDS')
+                    def isRunning = sh(
+                        returnStdout: true,
+                        script: "docker inspect -f '{{.State.Running}}' ${DOCKER_IMAGE} || echo 'false'"
+                    ).trim()
+                    
+                    if (isRunning != "true") {
+                        error("Container failed to start!")
                     }
                 }
             }
@@ -72,7 +72,15 @@ pipeline {
     
     post {
         always {
-            echo "Deployment completed for ${DOCKER_IMAGE}:${DOCKER_TAG}"
+            script {
+                // Log container status (debugging)
+                sh """
+                    echo "### Container Status ###"
+                    docker ps -a --filter "name=${DOCKER_IMAGE}"
+                    echo "\\n### Recent Logs ###"
+                    docker logs ${DOCKER_IMAGE} --tail 50 || true
+                """
+            }
         }
     }
 }
