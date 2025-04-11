@@ -5,7 +5,7 @@ pipeline {
         // Docker image settings
         DOCKER_IMAGE = 'credit-score-api'
         DOCKER_TAG = 'latest'
-        API_PORT = '5000'  // Your app's port (from app.py)
+        CONTAINER_PORT = '5000'  // Matches your Flask app's port
         
         // Database credentials (from Jenkins credentials store)
         DB_IP = credentials('DB_IP')
@@ -16,6 +16,13 @@ pipeline {
     }
     
     stages {
+        stage('Checkout Code') {
+            steps {
+                git branch: 'main', 
+                url: 'https://github.com/yenat/Interoperable-creditscore.git'
+            }
+        }
+        
         stage('Build Docker Image') {
             steps {
                 script {
@@ -34,15 +41,15 @@ pipeline {
         stage('Deploy API') {
             steps {
                 script {
-                    // Stop and remove old container (if exists)
+                    // Stop and remove old container if exists
                     sh "docker stop ${DOCKER_IMAGE} || true"
                     sh "docker rm ${DOCKER_IMAGE} || true"
                     
-                    // Deploy new container with DB env vars
+                    // Deploy new container with environment variables
                     sh """
                         docker run -d \
                             --name ${DOCKER_IMAGE} \
-                            -p ${API_PORT}:5000 \
+                            -p ${CONTAINER_PORT}:5000 \
                             -e DB_IP=${DB_IP} \
                             -e DB_PORT=${DB_PORT} \
                             -e DB_SID=${DB_SID} \
@@ -52,15 +59,15 @@ pipeline {
                             ${DOCKER_IMAGE}:${DOCKER_TAG}
                     """
                     
-                    // Basic health check (ensure container stays running)
+                    // Verify container is running
                     sleep(time: 5, unit: 'SECONDS')
-                    def isRunning = sh(
+                    def containerStatus = sh(
                         returnStdout: true,
                         script: "docker inspect -f '{{.State.Running}}' ${DOCKER_IMAGE} || echo 'false'"
                     ).trim()
                     
-                    if (isRunning != "true") {
-                        error("Container failed to start!")
+                    if (containerStatus != "true") {
+                        error("Container failed to start! Check logs with: docker logs ${DOCKER_IMAGE}")
                     }
                 }
             }
@@ -70,12 +77,13 @@ pipeline {
     post {
         always {
             script {
-                // Log container status (debugging)
+                // Debugging info
+                echo "### Deployment Summary ###"
                 sh """
-                    echo "### Container Status ###"
-                    docker ps -a --filter "name=${DOCKER_IMAGE}"
-                    echo "\\n### Recent Logs ###"
-                    docker logs ${DOCKER_IMAGE} --tail 50 || true
+                    echo "Running containers:"
+                    docker ps --filter "name=${DOCKER_IMAGE}"
+                    echo "\nRecent logs:"
+                    docker logs ${DOCKER_IMAGE} --tail 30 || true
                 """
             }
         }
