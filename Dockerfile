@@ -2,10 +2,10 @@ FROM python:3.9-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies (including curl)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    gcc python3-dev libaio1 unzip && \
+    gcc python3-dev libaio1 unzip curl && \
     rm -rf /var/lib/apt/lists/*
 
 # Install Oracle Instant Client
