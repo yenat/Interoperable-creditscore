@@ -3,7 +3,7 @@ pipeline {
     
     environment {
         // Docker image settings
-        DOCKER_IMAGE = 'credit-score-api'
+        DOCKER_IMAGE = 'interoperable-credit-score-api'
         DOCKER_TAG = 'latest'
         API_PORT = '5000'  // Your app's port (from app.py)
         
@@ -52,7 +52,7 @@ pipeline {
                             -e DB_USERNAME=${DB_USERNAME} \
                             -e DB_PASSWORD=${DB_PASSWORD} \
                             --restart unless-stopped \
-                            credit-score-api:latest
+                            interoperable-credit-score-api:latest
                     """
                     
                     // Basic health check (ensure container stays running)
