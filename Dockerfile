@@ -38,8 +38,12 @@ COPY --from=builder /usr/local/lib/python3.9/site-packages /usr/local/lib/python
 
 ENV LD_LIBRARY_PATH=/opt/oracle/instantclient
 ENV ORACLE_HOME=/opt/oracle/instantclient
+
 # Copy application files
 COPY . .
+
+# Ensure uvicorn is installed
+RUN pip install uvicorn
 
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "5000", "--lifespan", "off"]
 
