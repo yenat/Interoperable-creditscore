@@ -1,5 +1,4 @@
-# Stage 1: Build stage
-FROM python:3.9-slim AS builder
+FROM python:3.9-slim
 
 WORKDIR /app
 
@@ -21,30 +20,15 @@ RUN mkdir -p /opt/oracle && \
 
 ENV LD_LIBRARY_PATH=/opt/oracle/instantclient
 ENV ORACLE_HOME=/opt/oracle/instantclient
-# Install Python packages
+
+# Install Python packages in two stages
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt && \
     pip cache purge
 
-# Stage 2: Final stage
-FROM python:3.9-slim
-
-WORKDIR /app
-
-# Copy Oracle Instant Client from builder stage
-COPY --from=builder /opt/oracle /opt/oracle
-COPY --from=builder /usr/local/lib/python3.9/site-packages /usr/local/lib/python3.9/site-packages
-
-ENV LD_LIBRARY_PATH=/opt/oracle/instantclient
-ENV ORACLE_HOME=/opt/oracle/instantclient
-
-# Copy application files
 COPY . .
 
-# Ensure uvicorn is installed
-RUN pip install uvicorn
-
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "5000", "--lifespan", "off"]
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "5000"]
 
 EXPOSE 5000
