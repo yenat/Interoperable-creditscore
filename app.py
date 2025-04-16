@@ -207,11 +207,19 @@ def predict() -> Dict[str, Any]:
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+    
+@app.route("/")
+def home():
+    return jsonify({"message": "Credit Score API"}), 200
 
+@app.route("/health")
+def health_check():
+    return jsonify({"status": "healthy"}), 200
 
 
 if __name__ == "__main__":
-    app.run(host="192.168.20.49", port=5000)
+    print("DB Config:", os.getenv('DB_IP'), os.getenv('DB_PORT'))  # Debug
+    app.run(host="0.0.0.0", port=5000)
 
 
 

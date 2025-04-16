@@ -44,6 +44,7 @@ pipeline {
                         docker rm interoperable-credit-score-api || true
                         
                         docker run -d \
+                            --network host \  
                             --name interoperable-credit-score-api \
                             -p 5000:5000 \
                             -e DB_IP=${DB_IP} \
