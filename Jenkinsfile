@@ -39,24 +39,19 @@ pipeline {
                     sh "docker rm ${DOCKER_IMAGE} || true"
                     
                     // Deploy new container with DB env vars
-                    sh """
-                        docker stop interoperable-credit-score-api || true
-                        docker rm interoperable-credit-score-api || true
-                        
-                        docker run -d \
-                            --network host \  
-                            --name interoperable-credit-score-api \
-                            -p 5000:5000 \
-                            -e DB_IP=${DB_IP} \
-                            -e DB_PORT=${DB_PORT} \
-                            -e DB_SID=${DB_SID} \
-                            -e DB_USERNAME=${DB_USERNAME} \
-                            -e DB_PASSWORD=${DB_PASSWORD} \
-                            --restart unless-stopped \
-                            interoperable-credit-score-api:latest
-                    """
+                    sh '''docker run -d \
+                        --network host \
+                        --name interoperable-credit-score-api \
+                        -p 5000:5000 \
+                        -e DB_IP=${DB_IP} \
+                        -e DB_PORT=${DB_PORT} \
+                        -e DB_SID=${DB_SID} \
+                        -e DB_USERNAME=${DB_USERNAME} \
+                        -e DB_PASSWORD=${DB_PASSWORD} \
+                        --restart unless-stopped \
+                        interoperable-credit-score-api:latest'''
                     
-                    // Basic health check (ensure container stays running)
+                    // Health check
                     sleep(time: 5, unit: 'SECONDS')
                     def isRunning = sh(
                         returnStdout: true,
@@ -69,7 +64,6 @@ pipeline {
                 }
             }
         }
-    }
     
     post {
         always {
