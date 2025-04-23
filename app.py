@@ -6,6 +6,7 @@ import os
 from typing import Dict, List, Any
 from datetime import datetime
 from dotenv import load_dotenv
+import requests
 
 # Load environment variables
 load_dotenv()
@@ -114,13 +115,15 @@ def get_risk_level(credit_score: float) -> str:
         return "HIGH"
 
 @app.route('/predict', methods=['POST'])
-def predict() -> Dict[str, Any]:
+def predict():
     try:
         request_data = request.get_json()
         if not request_data:
             return jsonify({'error': 'No JSON data provided'}), 400
 
         fayda_number = request_data.get('fayda_number')
+        callback_url = request_data.get('callbackUrl')  # Get callback URL
+        
         if not fayda_number:
             return jsonify({'error': 'fayda_number is required'}), 400
 
@@ -195,18 +198,41 @@ def predict() -> Dict[str, Any]:
         # Return only the combined result
         from collections import OrderedDict
 
-        # In your predict() function, replace the return statement with:
-        return jsonify(OrderedDict([
+        result = OrderedDict([
             ('fayda_number', fayda_number),
             ('type', 'CREDIT_SCORE'),
             ('score', combined_score),
             ('risk_level', combined_risk),
             ('features', final_features),
             ('timestamp', datetime.now().isoformat())
-        ]))
+        ])
+
+        # Send to callback URL if provided
+        if callback_url:
+            try:
+                response = requests.post(
+                    callback_url,
+                    json=result,
+                    timeout=10
+                )
+                print(f"Callback sent to {callback_url}, status: {response.status_code}")
+            except Exception as e:
+                print(f"Callback failed: {str(e)}")
+
+        return jsonify(result)
 
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        error_response = {'error': str(e)}
+        if callback_url:
+            try:
+                requests.post(
+                    callback_url,
+                    json={**error_response, 'fayda_number': fayda_number},
+                    timeout=5
+                )
+            except Exception:
+                pass
+        return jsonify(error_response), 500
     
 @app.route("/")
 def home():
