@@ -122,7 +122,7 @@ def predict():
             return jsonify({'error': 'No JSON data provided'}), 400
 
         fayda_number = request_data.get('fayda_number')
-        callback_url = request_data.get('callbackUrl')  # Get callback URL
+        callback_url = request_data.get('callbackUrl')  # Get callback URL from request
         
         if not fayda_number:
             return jsonify({'error': 'fayda_number is required'}), 400
@@ -207,17 +207,17 @@ def predict():
             ('timestamp', datetime.now().isoformat())
         ])
 
-        # Send to callback URL if provided
+        # Send to callback URL if provided (NEW CODE)
         if callback_url:
             try:
-                response = requests.post(
+                requests.post(
                     callback_url,
                     json=result,
-                    timeout=10
+                    timeout=10  # 10 second timeout
                 )
-                print(f"Callback sent to {callback_url}, status: {response.status_code}")
+                print(f"Successfully sent result to callback URL: {callback_url}")
             except Exception as e:
-                print(f"Callback failed: {str(e)}")
+                print(f"Failed to send callback: {str(e)}")
 
         return jsonify(result)
 
@@ -228,7 +228,7 @@ def predict():
                 requests.post(
                     callback_url,
                     json={**error_response, 'fayda_number': fayda_number},
-                    timeout=5
+                    timeout=10
                 )
             except Exception:
                 pass
