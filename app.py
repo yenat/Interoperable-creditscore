@@ -203,7 +203,7 @@ def predict():
             ('type', 'CREDIT_SCORE'),
             ('score', combined_score),
             ('risk_level', combined_risk),
-            ('features', final_features),
+            ('score_breakdown', final_features),
             ('timestamp', datetime.now().isoformat())
         ])
 
