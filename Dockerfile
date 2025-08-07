@@ -30,12 +30,12 @@ RUN pip install --no-cache-dir --upgrade pip && \
 COPY . .
 
 # Production server configuration
-ENV GUNICORN_CMD_ARGS="--workers=4 --bind=0.0.0.0:5000 --timeout 120 --access-logfile - --error-logfile -"
+ENV GUNICORN_CMD_ARGS="--workers=4 --bind=0.0.0.0:5050 --timeout 120 --access-logfile - --error-logfile -"
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s \
-    CMD curl -f http://localhost:5000/health || exit 1
+    CMD curl -f http://localhost:5050/health || exit 1
 
 CMD ["gunicorn", "app:app"]
 
-EXPOSE 5000
+EXPOSE 5050

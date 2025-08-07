@@ -5,7 +5,7 @@ pipeline {
         // Docker image settings
         DOCKER_IMAGE = 'interoperable-credit-score-api'
         DOCKER_TAG = 'latest'
-        API_PORT = '5000'  // Your app's port (from app.py)
+        API_PORT = '5050'  // Your app's port (from app.py)
         
         // Database credentials (from Jenkins credentials store)
         DB_IP = credentials('DB_IP')
@@ -46,7 +46,7 @@ pipeline {
                         docker run -d \
                             --network host \
                             --name interoperable-credit-score-api \
-                            -p 5000:5000 \
+                            -p 5050:5050 \
                             -e DB_IP=${DB_IP} \
                             -e DB_PORT=${DB_PORT} \
                             -e DB_SID=${DB_SID} \

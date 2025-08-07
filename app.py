@@ -245,7 +245,7 @@ def health_check():
 
 if __name__ == "__main__":
     print("DB Config:", os.getenv('DB_IP'), os.getenv('DB_PORT'))  # Debug
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=5050)
 
 
 
